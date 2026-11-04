@@ -1,0 +1,19 @@
+# Node / Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Python / Backend
+backend/__pycache__/
+backend/*.pyc
+backend/.pytest_cache/
+backend/tests/__pycache__/
+backend/config.json
+backend/history.json
+
+# Environment / OS
+.env
+.env.local
+.DS_Store
+Thumbs.db
+*.log
