@@ -1,10 +1,9 @@
-import os
-from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 
 from categorizer import get_category
 from helpers import format_size, validate_path
+from storage import iter_files, uses_blob_storage
 
 
 def search_files(
@@ -30,53 +29,38 @@ def search_files(
     results: List[Dict[str, Any]] = []
     errors: List[str] = []
 
-    for root, _, files in os.walk(valid_target, followlinks=False):
-        current_root = Path(root)
-        for filename in files:
-            file_path = current_root / filename
+    for stored_file in iter_files(valid_target):
+        file_path = stored_file.path
+        filename = file_path.name
 
-            if file_path.is_symlink():
-                try:
-                    file_path.resolve().relative_to(valid_root)
-                except (ValueError, RuntimeError):
-                    continue
-
-            # Query match
-            if cleaned_query and cleaned_query not in filename.lower():
-                continue
-
-            file_ext = file_path.suffix.lower()
-
-            # Extension match
-            if cleaned_ext and file_ext != cleaned_ext:
-                continue
-
-            file_cat = get_category(file_ext)
-
-            # Category match
-            if cleaned_cat and cleaned_cat.lower() != "all" and file_cat.lower() != cleaned_cat.lower():
-                continue
-
+        if not uses_blob_storage() and file_path.is_symlink():
             try:
-                st = file_path.stat()
-                try:
-                    rel_path = str(file_path.relative_to(valid_target))
-                except ValueError:
-                    rel_path = filename
+                file_path.resolve().relative_to(valid_root)
+            except (ValueError, RuntimeError):
+                continue
 
-                results.append({
-                    "name": filename,
-                    "extension": file_ext,
-                    "path": str(file_path),
-                    "relative_path": rel_path,
-                    "parent_folder": file_path.parent.name,
-                    "category": file_cat,
-                    "size": st.st_size,
-                    "size_formatted": format_size(st.st_size),
-                    "modified": datetime.fromtimestamp(st.st_mtime).isoformat(),
-                })
-            except (PermissionError, FileNotFoundError, OSError) as e:
-                errors.append(f"Could not read {filename}: {str(e)}")
+        if cleaned_query and cleaned_query not in filename.lower():
+            continue
+
+        file_ext = file_path.suffix.lower()
+        if cleaned_ext and file_ext != cleaned_ext:
+            continue
+
+        file_cat = get_category(file_ext)
+        if cleaned_cat and cleaned_cat.lower() != "all" and file_cat.lower() != cleaned_cat.lower():
+            continue
+
+        results.append({
+            "name": filename,
+            "extension": file_ext,
+            "path": str(file_path),
+            "relative_path": stored_file.relative_path,
+            "parent_folder": file_path.parent.name,
+            "category": file_cat,
+            "size": stored_file.size,
+            "size_formatted": format_size(stored_file.size),
+            "modified": stored_file.modified.isoformat(),
+        })
 
     # Sort results alphabetically by filename
     results.sort(key=lambda x: x["name"].lower())

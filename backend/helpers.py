@@ -36,18 +36,32 @@ def ensure_default_root(allowed_root: Path) -> None:
     (serverless /tmp is wiped on cold starts)."""
     if Path(allowed_root).resolve() != DEFAULT_ALLOWED_ROOT:
         return
+    from storage import directory_exists, uses_blob_storage
+
+    if uses_blob_storage():
+        if not directory_exists(DEFAULT_ALLOWED_ROOT):
+            from sample_generator import seed_sample_data
+
+            seed_sample_data(DEFAULT_ALLOWED_ROOT)
+        return
     if DEFAULT_ALLOWED_ROOT.exists() and any(DEFAULT_ALLOWED_ROOT.iterdir()):
         return
-    from sample_generator import seed_sample_data  # local import avoids circular import
+    from sample_generator import seed_sample_data
+
     seed_sample_data(DEFAULT_ALLOWED_ROOT)
 
 
 def get_config() -> dict:
     """Reads configuration or returns defaults."""
-    try:
-        ensure_default_root(DEFAULT_ALLOWED_ROOT)
-    except Exception:
-        pass
+    ensure_default_root(DEFAULT_ALLOWED_ROOT)
+    from storage import read_json, uses_blob_storage
+
+    if uses_blob_storage():
+        data = read_json(CONFIG_FILE, {})
+        return {
+            "allowed_root": data.get("allowed_root", str(DEFAULT_ALLOWED_ROOT)),
+            "current_scan_dir": data.get("current_scan_dir", str(DEFAULT_ALLOWED_ROOT)),
+        }
     if CONFIG_FILE.exists():
         try:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
@@ -66,6 +80,17 @@ def get_config() -> dict:
 
 def save_config(allowed_root: str, current_scan_dir: str):
     """Persists configuration safely."""
+    from storage import uses_blob_storage, write_json
+
+    if uses_blob_storage():
+        write_json(
+            CONFIG_FILE,
+            {
+                "allowed_root": allowed_root,
+                "current_scan_dir": current_scan_dir,
+            },
+        )
+        return
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(
             {
@@ -127,8 +152,16 @@ def validate_path(target_path_input: str | Path, allowed_root_input: str | Path,
         except ValueError:
             raise ValueError(f"Access denied: Symlink resolves outside allowed directory '{allowed_root}'.")
 
-    if must_exist and not target_path.exists():
-        raise FileNotFoundError(f"Path does not exist: '{target_path}'")
+    if must_exist:
+        from storage import directory_exists, path_exists, uses_blob_storage
+
+        exists = (
+            directory_exists(target_path) or path_exists(target_path)
+            if uses_blob_storage()
+            else target_path.exists()
+        )
+        if not exists:
+            raise FileNotFoundError(f"Path does not exist: '{target_path}'")
 
     return target_path
 
@@ -140,7 +173,9 @@ def get_safe_destination_path(dest_folder: Path, filename: str) -> Path:
     Never overwrites existing files.
     """
     dest_path = dest_folder / filename
-    if not dest_path.exists():
+    from storage import path_exists
+
+    if not path_exists(dest_path):
         return dest_path
 
     stem = Path(filename).stem
@@ -149,6 +184,6 @@ def get_safe_destination_path(dest_folder: Path, filename: str) -> Path:
     while True:
         candidate_name = f"{stem} ({counter}){suffix}"
         candidate_path = dest_folder / candidate_name
-        if not candidate_path.exists():
+        if not path_exists(candidate_path):
             return candidate_path
         counter += 1

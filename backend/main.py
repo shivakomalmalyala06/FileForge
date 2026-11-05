@@ -19,6 +19,7 @@ from sample_generator import seed_sample_data
 from scanner import scan_directory
 from search import search_files
 from stats import get_system_statistics
+from storage import directory_exists, uses_blob_storage
 from undo import get_recent_history, undo_batch
 from uploader import save_uploaded_files
 
@@ -71,13 +72,6 @@ def get_current_configuration():
     config = get_config()
     allowed_root = Path(config["allowed_root"]).resolve()
     current_scan = Path(config["current_scan_dir"]).resolve()
-    
-    # Auto-seed sample_data if empty
-    if not allowed_root.exists() or not any(allowed_root.iterdir()):
-        try:
-            seed_sample_data(allowed_root)
-        except Exception:
-            pass
 
     return {
         "allowed_root": str(allowed_root),
@@ -92,7 +86,12 @@ def update_configuration(req: ConfigUpdateRequest):
     current_cfg = get_config()
     allowed_root = Path(req.allowed_root if req.allowed_root else current_cfg["allowed_root"]).resolve()
 
-    if not allowed_root.exists():
+    root_exists = (
+        directory_exists(allowed_root)
+        if uses_blob_storage()
+        else allowed_root.exists()
+    )
+    if not root_exists:
         raise HTTPException(status_code=400, detail=f"Allowed root path does not exist: {allowed_root}")
 
     scan_dir = Path(req.current_scan_dir if req.current_scan_dir else current_cfg["current_scan_dir"]).resolve()

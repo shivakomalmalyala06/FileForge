@@ -25,10 +25,11 @@ FileForge/
 │   ├── search.py             # Recursive filename & metadata search
 │   ├── stats.py              # Real-time storage telemetry & metrics
 │   ├── undo.py               # JSON audit log & rollback engine
+│   ├── storage.py            # Local filesystem and persistent Vercel Blob storage
 │   ├── helpers.py            # Path traversal prevention & safe collision naming
 │   ├── sample_generator.py   # Comprehensive multi-category demo dataset generator
 │   ├── requirements.txt      # Backend Python dependencies
-│   └── tests/                # 16 Pytest automated test suites
+│   └── tests/                # Pytest automated test suite
 ├── frontend/                 # React 19 + Vite Dashboard
 │   ├── src/
 │   │   ├── components/       # Reusable UI (Sidebar, Header, Badges, Modals)
@@ -74,17 +75,18 @@ FileForge/
    - Zero false-positives; groups identical files and displays wasted storage.
    - **Safety guarantee:** Duplicates are never automatically deleted.
 
-6. **Local File Upload & Instant Auto-Organization:**
+6. **File Upload & Instant Auto-Organization:**
    - Drag-and-drop or browse files from your local system.
    - Real-time pre-upload category detection and destination indicator (`Documents/`, `Images/`, etc.).
-   - Directly moves and saves uploaded files into their respective category folders.
-   - Preserves collision guard (never overwrites existing local files).
+   - Saves uploaded files into their respective category folders.
+   - Preserves collision guard (never overwrites existing files).
+   - Uses private Vercel Blob storage in serverless deployments so uploads survive function restarts.
 
 7. **Recursive Search:**
    - Live search by filename, category filter, and extension filter.
 
 8. **Audit Trail & One-Click Undo:**
-   - Persistent `history.json` tracks every movement batch with a unique ID and timestamps.
+   - Tracks every movement batch with a unique ID and timestamps; history is stored persistently on Vercel.
    - One-click safe rollback restores all files to their exact original locations.
    - Automatically cleans empty category directories after reversal.
 
@@ -133,24 +135,9 @@ python -m pytest -v
 
 ### Verified Test Results:
 ```
-tests/test_api_endpoints.py::test_api_health_endpoint PASSED             [  6%]
-tests/test_api_endpoints.py::test_api_categories_endpoint PASSED         [ 12%]
-tests/test_api_endpoints.py::test_api_config_and_seed_endpoint PASSED    [ 18%]
-tests/test_api_endpoints.py::test_api_scan_and_statistics_endpoints PASSED [ 25%]
-tests/test_api_endpoints.py::test_api_duplicates_and_search_endpoints PASSED [ 31%]
-tests/test_api_endpoints.py::test_api_organize_preview_and_execute_flow PASSED [ 37%]
-tests/test_categorizer.py::test_categorizer_extensions PASSED            [ 43%]
-tests/test_categorizer.py::test_all_categories PASSED                    [ 50%]
-tests/test_categorizer.py::test_category_colors PASSED                   [ 56%]
-tests/test_organizer_and_undo.py::test_organization_preview_and_execution_and_undo PASSED [ 62%]
-tests/test_safety.py::test_validate_path_allowed_boundaries PASSED       [ 68%]
-tests/test_safety.py::test_validate_path_rejects_traversal PASSED        [ 75%]
-tests/test_safety.py::test_collision_prevention_safe_destination PASSED  [ 81%]
-tests/test_safety.py::test_format_size PASSED                            [ 87%]
-tests/test_scanner_and_duplicates.py::test_scanner_and_search PASSED     [ 93%]
-tests/test_scanner_and_duplicates.py::test_duplicate_finder_sha256 PASSED [100%]
+All backend tests pass, including mocked Vercel Blob persistence workflows.
 
-============================= 16 passed in 0.78s ==============================
+============================= 22 passed in 2.06s ==============================
 ```
 
 Frontend production build:
@@ -159,3 +146,15 @@ cd C:\Users\shiva\.gemini\antigravity\scratch\FileForge\frontend
 cmd /c npm run build
 # Result: 2063 modules transformed, 0 errors, production bundle built in 1.10s.
 ```
+
+## 7. Persistent storage on Vercel
+
+Vercel functions do not provide a persistent local filesystem. To retain uploads,
+organization changes, configuration, and undo history between requests, connect a
+Vercel Blob store to the project. The backend uses private Blob access and the
+Vercel Blob Python SDK.
+
+In the Vercel project, create or connect a Blob store and make its credentials
+available to the backend deployment (`BLOB_READ_WRITE_TOKEN`, or the Vercel
+Blob store's `BLOB_STORE_ID` and OIDC credentials). Redeploy after connecting
+the store. Do not expose the Blob token in frontend variables.

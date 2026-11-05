@@ -1,18 +1,26 @@
 import json
-import os
-import shutil
 import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 
 from helpers import validate_path, format_size, get_safe_destination_path, DATA_DIR
+from storage import (
+    move_file,
+    path_exists,
+    read_json,
+    remove_empty_directory,
+    uses_blob_storage,
+    write_json,
+)
 
 HISTORY_FILE = DATA_DIR / "history.json"
 
 
 def load_history() -> List[Dict[str, Any]]:
     """Loads all operation batches from JSON history file."""
+    if uses_blob_storage():
+        return read_json(HISTORY_FILE, {}).get("batches", [])
     if not HISTORY_FILE.exists():
         return []
     try:
@@ -25,6 +33,9 @@ def load_history() -> List[Dict[str, Any]]:
 
 def save_history(batches: List[Dict[str, Any]]) -> None:
     """Saves operation batches to JSON history file safely."""
+    if uses_blob_storage():
+        write_json(HISTORY_FILE, {"batches": batches})
+        return
     with open(HISTORY_FILE, "w", encoding="utf-8") as f:
         json.dump({"batches": batches}, f, indent=2)
 
@@ -107,7 +118,7 @@ def undo_batch(batch_id: Optional[str], allowed_root: str | Path) -> Dict[str, A
             curr_path = validate_path(item["new_path"], valid_root, must_exist=False)
             orig_path = validate_path(item["original_path"], valid_root, must_exist=False)
 
-            if not curr_path.exists():
+            if not path_exists(curr_path):
                 skipped_or_failed.append({
                     "file_name": item["file_name"],
                     "reason": f"File no longer exists at '{curr_path}'. It may have been moved or removed manually.",
@@ -118,12 +129,12 @@ def undo_batch(batch_id: Optional[str], allowed_root: str | Path) -> Dict[str, A
             orig_path.parent.mkdir(parents=True, exist_ok=True)
 
             # Never overwrite! If original_path is occupied by a different file, use safe naming
-            if orig_path.exists():
+            if path_exists(orig_path):
                 safe_orig = get_safe_destination_path(orig_path.parent, orig_path.name)
             else:
                 safe_orig = orig_path
 
-            shutil.move(str(curr_path), str(safe_orig))
+            move_file(curr_path, safe_orig)
             folders_to_check.add(curr_path.parent)
 
             restored.append({
@@ -142,8 +153,7 @@ def undo_batch(batch_id: Optional[str], allowed_root: str | Path) -> Dict[str, A
     cleaned_folders: List[str] = []
     for folder in folders_to_check:
         try:
-            if folder.exists() and folder.is_dir() and not any(folder.iterdir()):
-                folder.rmdir()
+            if remove_empty_directory(folder):
                 cleaned_folders.append(folder.name)
         except Exception:
             pass

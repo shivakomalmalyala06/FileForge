@@ -1,5 +1,3 @@
-import os
-import shutil
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -8,6 +6,7 @@ from fastapi import UploadFile
 
 from categorizer import get_category
 from helpers import format_size, validate_path, get_safe_destination_path
+from storage import make_directory, write_stream
 from undo import record_operation
 
 
@@ -44,18 +43,13 @@ def save_uploaded_files(
             dest_folder = valid_target
 
         try:
-            dest_folder.mkdir(parents=True, exist_ok=True)
+            make_directory(dest_folder)
             safe_dest_path = get_safe_destination_path(dest_folder, clean_filename)
 
-            # Write file in chunks directly from file buffer
-            bytes_written = 0
-            with open(safe_dest_path, "wb") as buffer:
-                while True:
-                    chunk = file.file.read(65536)
-                    if not chunk:
-                        break
-                    buffer.write(chunk)
-                    bytes_written += len(chunk)
+            file.file.seek(0, 2)
+            bytes_written = file.file.tell()
+            file.file.seek(0)
+            write_stream(safe_dest_path, file.file, bytes_written)
 
             uploaded_records.append({
                 "original_filename": clean_filename,
@@ -110,4 +104,3 @@ def save_uploaded_files(
         "uploaded_files": uploaded_records,
         "errors": errors,
     }
-

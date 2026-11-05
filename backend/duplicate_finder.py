@@ -1,19 +1,18 @@
 import hashlib
-import os
 from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Any
 
 from categorizer import get_category
 from helpers import format_size, validate_path
+from storage import iter_file_chunks, iter_files, uses_blob_storage
 
 
 def calculate_sha256(file_path: Path, chunk_size: int = 65536) -> str:
     """Calculates SHA-256 hash of a file reading in chunks."""
     hasher = hashlib.sha256()
-    with open(file_path, "rb") as f:
-        while chunk := f.read(chunk_size):
-            hasher.update(chunk)
+    for chunk in iter_file_chunks(file_path, chunk_size):
+        hasher.update(chunk)
     return hasher.hexdigest()
 
 
@@ -29,25 +28,19 @@ def find_duplicates(target_dir: str | Path, allowed_root: str | Path) -> Dict[st
     size_map: Dict[int, List[Path]] = defaultdict(list)
     errors: List[str] = []
 
-    for root, _, files in os.walk(valid_target, followlinks=False):
-        current_root = Path(root)
-        for filename in files:
-            file_path = current_root / filename
+    file_metadata = {}
+    for stored_file in iter_files(valid_target):
+        file_path = stored_file.path
 
-            # Skip symlinks outside root
-            if file_path.is_symlink():
-                try:
-                    file_path.resolve().relative_to(valid_root)
-                except (ValueError, RuntimeError):
-                    continue
-
+        if not uses_blob_storage() and file_path.is_symlink():
             try:
-                st = file_path.stat()
-                # Empty files (0 bytes) are optionally grouped or skipped; let's track only size > 0
-                if st.st_size > 0:
-                    size_map[st.st_size].append(file_path)
-            except (PermissionError, FileNotFoundError, OSError) as e:
-                errors.append(f"Cannot stat {file_path.name}: {str(e)}")
+                file_path.resolve().relative_to(valid_root)
+            except (ValueError, RuntimeError):
+                continue
+
+        if stored_file.size > 0:
+            size_map[stored_file.size].append(file_path)
+            file_metadata[str(file_path)] = stored_file
 
     # Step 2: Only hash files that share the exact same size
     hash_map: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
@@ -59,19 +52,17 @@ def find_duplicates(target_dir: str | Path, allowed_root: str | Path) -> Dict[st
             for path in paths:
                 try:
                     file_hash = calculate_sha256(path)
-                    try:
-                        rel_path = str(path.relative_to(valid_target))
-                    except ValueError:
-                        rel_path = path.name
+                    stored_file = file_metadata[str(path)]
+                    rel_path = stored_file.relative_path
 
                     hash_map[file_hash].append({
                         "name": path.name,
                         "path": str(path),
                         "relative_path": rel_path,
-                        "size": size,
+                        "size": stored_file.size,
                         "size_formatted": format_size(size),
                         "category": get_category(path.suffix),
-                        "modified": datetime_from_path(path),
+                        "modified": stored_file.modified.isoformat(),
                     })
                 except (PermissionError, FileNotFoundError, OSError) as e:
                     errors.append(f"Cannot hash {path.name}: {str(e)}")

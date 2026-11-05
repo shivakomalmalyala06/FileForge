@@ -1,9 +1,9 @@
 import os
-import shutil
 from pathlib import Path
 from typing import Dict, Any
 
 from helpers import DEFAULT_ALLOWED_ROOT
+from storage import iter_files, make_directory, remove_file, write_file
 
 
 def seed_sample_data(target_dir: Path | None = None) -> Dict[str, Any]:
@@ -13,17 +13,11 @@ def seed_sample_data(target_dir: Path | None = None) -> Dict[str, Any]:
     """
     dest = target_dir if target_dir else DEFAULT_ALLOWED_ROOT
     dest = Path(dest).resolve()
-    dest.mkdir(parents=True, exist_ok=True)
+    make_directory(dest)
 
     # Clean existing items inside sample_data safely to allow clean re-runs
-    for item in dest.iterdir():
-        if item.is_dir():
-            shutil.rmtree(item, ignore_errors=True)
-        else:
-            try:
-                item.unlink(missing_ok=True)
-            except Exception:
-                pass
+    for item in iter_files(dest):
+        remove_file(item.path)
 
     created_files = []
 
@@ -87,8 +81,7 @@ def seed_sample_data(target_dir: Path | None = None) -> Dict[str, Any]:
     # Write files
     for filename, content in all_initial:
         file_path = dest / filename
-        with open(file_path, "wb") as f:
-            f.write(content)
+        write_file(file_path, content, overwrite=True)
         created_files.append(filename)
 
     # Now create deliberate duplicates (identical byte content for SHA-256 detection)
@@ -100,13 +93,12 @@ def seed_sample_data(target_dir: Path | None = None) -> Dict[str, Any]:
 
     for filename, content in duplicates:
         file_path = dest / filename
-        with open(file_path, "wb") as f:
-            f.write(content)
+        write_file(file_path, content, overwrite=True)
         created_files.append(filename)
 
     # Also create a nested subfolder with raw unsorted files to demonstrate deep recursive scanning
     subfolder = dest / "Unsorted_Downloads"
-    subfolder.mkdir(parents=True, exist_ok=True)
+    make_directory(subfolder)
 
     nested_files = [
         ("Invoice_May_2026.pdf", b"%PDF-1.4 Mock Invoice Content\n" * 20),
@@ -117,8 +109,7 @@ def seed_sample_data(target_dir: Path | None = None) -> Dict[str, Any]:
 
     for filename, content in nested_files:
         file_path = subfolder / filename
-        with open(file_path, "wb") as f:
-            f.write(content)
+        write_file(file_path, content, overwrite=True)
         created_files.append(f"Unsorted_Downloads/{filename}")
 
     return {

@@ -1,4 +1,3 @@
-import os
 from collections import defaultdict
 from pathlib import Path
 from typing import Dict, Any, List
@@ -6,6 +5,7 @@ from typing import Dict, Any, List
 from categorizer import get_category, get_category_color, get_all_categories
 from helpers import format_size, validate_path
 from duplicate_finder import find_duplicates
+from storage import iter_files, uses_blob_storage
 from undo import get_recent_history
 
 
@@ -30,40 +30,43 @@ def get_system_statistics(target_dir: str | Path, allowed_root: str | Path) -> D
 
     known_category_dirs = set(all_categories)
 
-    for root, dirs, files in os.walk(valid_target, followlinks=False):
-        current_path = Path(root)
-        total_folders += len(dirs)
-
+    folders: set[str] = set()
+    for stored_file in iter_files(valid_target):
+        file_path = stored_file.path
+        current_path = file_path.parent
         is_inside_cat_dir = current_path.name in known_category_dirs
 
-        for filename in files:
-            file_path = current_path / filename
-
-            if file_path.is_symlink():
-                try:
-                    file_path.resolve().relative_to(valid_root)
-                except (ValueError, RuntimeError):
-                    continue
-
+        if not uses_blob_storage() and file_path.is_symlink():
             try:
-                st = file_path.stat()
-                f_size = st.st_size
-                f_ext = file_path.suffix.lower()
-                cat = get_category(f_ext)
-
-                total_files += 1
-                total_size += f_size
-                category_counts[cat] = category_counts.get(cat, 0) + 1
-                category_sizes[cat] = category_sizes.get(cat, 0) + f_size
-                ext_counts[f_ext or "[no ext]"] += 1
-
-                if is_inside_cat_dir and current_path.name == cat:
-                    organized_files_count += 1
-                else:
-                    unorganized_files_count += 1
-
-            except (PermissionError, FileNotFoundError, OSError):
+                file_path.resolve().relative_to(valid_root)
+            except (ValueError, RuntimeError):
                 continue
+
+        f_size = stored_file.size
+        f_ext = file_path.suffix.lower()
+        cat = get_category(f_ext)
+
+        total_files += 1
+        total_size += f_size
+        category_counts[cat] = category_counts.get(cat, 0) + 1
+        category_sizes[cat] = category_sizes.get(cat, 0) + f_size
+        ext_counts[f_ext or "[no ext]"] += 1
+        folders.update(
+            str(Path(stored_file.relative_path).parents[i])
+            for i in range(len(Path(stored_file.relative_path).parts) - 1)
+        )
+
+        if is_inside_cat_dir and current_path.name == cat:
+            organized_files_count += 1
+        else:
+            unorganized_files_count += 1
+
+    if uses_blob_storage():
+        total_folders = len(folders)
+    else:
+        import os
+
+        total_folders = sum(len(dirs) for _, dirs, _ in os.walk(valid_target, followlinks=False))
 
     # Prepare category breakdown list for charts and metrics
     category_breakdown: List[Dict[str, Any]] = []
