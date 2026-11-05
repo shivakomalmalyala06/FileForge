@@ -23,7 +23,7 @@ FileForge/
 │   ├── organizer.py          # Collision-free move engine with dry-run
 │   ├── duplicate_finder.py   # Cryptographic SHA-256 chunked hasher
 │   ├── search.py             # Recursive filename & metadata search
-│   ├── statistics.py         # Real-time storage telemetry & metrics
+│   ├── stats.py              # Real-time storage telemetry & metrics
 │   ├── undo.py               # JSON audit log & rollback engine
 │   ├── helpers.py            # Path traversal prevention & safe collision naming
 │   ├── sample_generator.py   # Comprehensive multi-category demo dataset generator
@@ -159,4 +159,3 @@ cd C:\Users\shiva\.gemini\antigravity\scratch\FileForge\frontend
 cmd /c npm run build
 # Result: 2063 modules transformed, 0 errors, production bundle built in 1.10s.
 ```
-

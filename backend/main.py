@@ -18,7 +18,7 @@ from organizer import preview_organization, execute_organization
 from sample_generator import seed_sample_data
 from scanner import scan_directory
 from search import search_files
-from statistics import get_system_statistics
+from stats import get_system_statistics
 from undo import get_recent_history, undo_batch
 from uploader import save_uploaded_files
 

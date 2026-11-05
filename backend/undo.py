@@ -6,9 +6,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 
-from helpers import validate_path, format_size, get_safe_destination_path
+from helpers import validate_path, format_size, get_safe_destination_path, DATA_DIR
 
-HISTORY_FILE = Path(__file__).resolve().parent / "history.json"
+HISTORY_FILE = DATA_DIR / "history.json"
 
 
 def load_history() -> List[Dict[str, Any]]:

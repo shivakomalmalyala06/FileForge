@@ -1,16 +1,53 @@
 import os
 import json
+import tempfile
 from pathlib import Path
 from typing import Tuple
 
-# Project root: C:\Users\shiva\.gemini\antigravity\scratch\FileForge
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_ALLOWED_ROOT = (PROJECT_ROOT / "sample_data").resolve()
-CONFIG_FILE = Path(__file__).resolve().parent / "config.json"
+
+
+def _pick_data_dir() -> Path:
+    """
+    Writable folder for sample data, config and history.
+    Locally: the project folder (unchanged behaviour).
+    On serverless hosts such as Vercel the code folder is read-only and
+    PROJECT_ROOT resolves to a non-existent path like /var, so use the temp dir.
+    """
+    if os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+        return Path(tempfile.gettempdir()) / "fileforge"
+    try:
+        probe = PROJECT_ROOT / ".write_test"
+        probe.touch()
+        probe.unlink()
+        return PROJECT_ROOT
+    except OSError:
+        return Path(tempfile.gettempdir()) / "fileforge"
+
+
+DATA_DIR = _pick_data_dir()
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+DEFAULT_ALLOWED_ROOT = (DATA_DIR / "sample_data").resolve()
+CONFIG_FILE = DATA_DIR / "config.json"
+
+
+def ensure_default_root(allowed_root: Path) -> None:
+    """Re-creates the demo dataset if the default root is missing/empty
+    (serverless /tmp is wiped on cold starts)."""
+    if Path(allowed_root).resolve() != DEFAULT_ALLOWED_ROOT:
+        return
+    if DEFAULT_ALLOWED_ROOT.exists() and any(DEFAULT_ALLOWED_ROOT.iterdir()):
+        return
+    from sample_generator import seed_sample_data  # local import avoids circular import
+    seed_sample_data(DEFAULT_ALLOWED_ROOT)
 
 
 def get_config() -> dict:
     """Reads configuration or returns defaults."""
+    try:
+        ensure_default_root(DEFAULT_ALLOWED_ROOT)
+    except Exception:
+        pass
     if CONFIG_FILE.exists():
         try:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
