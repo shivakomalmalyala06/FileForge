@@ -42,9 +42,15 @@ def verify_file_access_token(token: str | None) -> bool:
         expires_at_text.encode("ascii"),
         hashlib.sha256,
     ).hexdigest()
-    return hmac.compare_digest(signature, expected_signature)
+    return hmac.compare_digest(
+        signature.encode("utf-8"),
+        expected_signature.encode("ascii"),
+    )
 
 
 def check_access_password(candidate: str) -> bool:
     expected = _configured_password()
-    return bool(expected) and hmac.compare_digest(candidate, expected)
+    return bool(expected) and hmac.compare_digest(
+        candidate.encode("utf-8"),
+        expected.encode("utf-8"),
+    )

@@ -19,6 +19,13 @@ def test_file_access_token_rejects_tampering_and_expiration(monkeypatch):
     assert not file_access.verify_file_access_token(token)
 
 
+def test_password_check_handles_unicode_and_rejects_wrong_password(monkeypatch):
+    monkeypatch.setenv("FILEFORGE_ACCESS_PASSWORD", "photo-pass-☀️")
+
+    assert file_access.check_access_password("photo-pass-☀️")
+    assert not file_access.check_access_password("photo-pass-🌙")
+
+
 def test_file_content_requires_password_and_streams_images(monkeypatch, tmp_path):
     monkeypatch.setenv("FILEFORGE_ACCESS_PASSWORD", "long-test-passphrase")
     image = tmp_path / "passport.jpg"
