@@ -1,9 +1,12 @@
 import os
+import mimetypes
 from pathlib import Path
 from typing import Optional, List
-from fastapi import FastAPI, HTTPException, Query, File, UploadFile
+from urllib.parse import quote
+from fastapi import FastAPI, HTTPException, Query, File, UploadFile, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from starlette.responses import StreamingResponse
 
 from categorizer import get_category_definitions, get_all_categories
 from duplicate_finder import find_duplicates
@@ -20,6 +23,14 @@ from scanner import scan_directory
 from search import search_files
 from stats import get_system_statistics
 from storage import directory_exists, uses_blob_storage
+from storage import iter_file_chunks, path_exists
+from file_access import (
+    COOKIE_NAME,
+    SESSION_MAX_AGE,
+    check_access_password,
+    issue_file_access_token,
+    verify_file_access_token,
+)
 from undo import get_recent_history, undo_batch
 from uploader import save_uploaded_files
 
@@ -55,6 +66,10 @@ class UndoRequest(BaseModel):
     batch_id: Optional[str] = None
 
 
+class FileAccessLoginRequest(BaseModel):
+    password: str
+
+
 # ---------------- API Endpoints ----------------
 
 @app.get("/api/health")
@@ -65,6 +80,70 @@ def health():
         "tagline": "Smarter Files. Simpler Work.",
         "version": "1.0.0",
     }
+
+
+@app.post("/api/auth/file-access")
+def login_for_file_access(req: FileAccessLoginRequest, request: Request, response: Response):
+    if not os.environ.get("FILEFORGE_ACCESS_PASSWORD"):
+        raise HTTPException(
+            status_code=503,
+            detail="Secure file access is not configured. Set FILEFORGE_ACCESS_PASSWORD on the backend.",
+        )
+    if not check_access_password(req.password):
+        raise HTTPException(status_code=401, detail="Incorrect file access password.")
+
+    response.set_cookie(
+        key=COOKIE_NAME,
+        value=issue_file_access_token(req.password),
+        max_age=SESSION_MAX_AGE,
+        httponly=True,
+        secure=request.url.scheme == "https" or bool(os.environ.get("VERCEL")),
+        samesite="strict",
+        path="/api/files",
+    )
+    return {"success": True}
+
+
+@app.get("/api/files/content")
+def get_file_content(path: str, request: Request):
+    if not verify_file_access_token(request.cookies.get(COOKIE_NAME)):
+        raise HTTPException(status_code=401, detail="Sign in to open files.")
+
+    config = get_config()
+    allowed_root = Path(config["allowed_root"]).resolve()
+    try:
+        file_path = validate_path(path, allowed_root, must_exist=True)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if uses_blob_storage():
+        if not path_exists(file_path):
+            raise HTTPException(status_code=404, detail=f"File not found: '{file_path}'")
+    elif not file_path.is_file():
+        raise HTTPException(status_code=404, detail=f"File not found: '{file_path}'")
+
+    content_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
+    inline_image_types = {
+        "image/avif",
+        "image/bmp",
+        "image/gif",
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+    }
+    disposition = "inline" if content_type in inline_image_types else "attachment"
+    headers = {
+        "Content-Disposition": f"{disposition}; filename*=UTF-8''{quote(file_path.name)}",
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+    }
+    return StreamingResponse(
+        iter_file_chunks(file_path),
+        media_type=content_type,
+        headers=headers,
+    )
 
 
 @app.get("/api/config")

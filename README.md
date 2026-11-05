@@ -137,7 +137,7 @@ python -m pytest -v
 ```
 All backend tests pass, including mocked Vercel Blob persistence workflows.
 
-============================= 22 passed in 2.06s ==============================
+============================= 25 passed in 2.28s ==============================
 ```
 
 Frontend production build:
@@ -158,3 +158,14 @@ In the Vercel project, create or connect a Blob store and make its credentials
 available to the backend deployment (`BLOB_READ_WRITE_TOKEN`, or the Vercel
 Blob store's `BLOB_STORE_ID` and OIDC credentials). Redeploy after connecting
 the store. Do not expose the Blob token in frontend variables.
+
+### Opening uploaded files
+
+The File Explorer can open stored raster images after file access is unlocked.
+Configure `FILEFORGE_ACCESS_PASSWORD` as a backend environment variable in
+Vercel for Production and Preview, then redeploy. Use a unique, randomly
+generated password with at least 32 characters and share it only with trusted
+users. Locally, set the same variable before starting the backend. The backend
+sets a secure, HTTP-only session cookie that expires after one hour; uploaded
+file contents are not served without that cookie. Other dashboard data and
+operations are not protected by this file-access password.

@@ -7,8 +7,10 @@ import {
   Calendar,
   HardDrive,
   AlertTriangle,
+  Eye,
 } from 'lucide-react';
 import CategoryBadge from '../components/CategoryBadge';
+import { api } from '../services/api';
 
 export default function FileExplorer({
   scanData,
@@ -19,6 +21,10 @@ export default function FileExplorer({
   const [searchFilter, setSearchFilter] = useState('');
   const [sortBy, setSortBy] = useState('modified'); // 'name', 'size', 'modified'
   const [sortOrder, setSortOrder] = useState('desc'); // 'asc', 'desc'
+  const [fileAccessPassword, setFileAccessPassword] = useState('');
+  const [hasFileAccess, setHasFileAccess] = useState(false);
+  const [isSigningIn, setIsSigningIn] = useState(false);
+  const [accessError, setAccessError] = useState('');
 
   const categories = [
     'All',
@@ -70,8 +76,68 @@ export default function FileExplorer({
     }
   };
 
+  const handleFileAccessLogin = async (event) => {
+    event.preventDefault();
+    setIsSigningIn(true);
+    setAccessError('');
+    try {
+      await api.loginForFileAccess(fileAccessPassword);
+      setHasFileAccess(true);
+      setFileAccessPassword('');
+    } catch (error) {
+      setAccessError(error.message);
+    } finally {
+      setIsSigningIn(false);
+    }
+  };
+
   return (
     <div>
+      <form
+        className="card"
+        onSubmit={handleFileAccessLogin}
+        style={{
+          marginBottom: 20,
+          padding: '16px 20px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: 12,
+        }}
+      >
+        <div>
+          <div style={{ fontWeight: 600, color: '#f8fafc' }}>Secure file access</div>
+          <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: 4 }}>
+            Sign in to open stored files. Access expires after one hour.
+          </div>
+          {accessError && (
+            <div role="alert" style={{ fontSize: '0.8rem', color: '#fca5a5', marginTop: 6 }}>
+              {accessError}
+            </div>
+          )}
+        </div>
+        {hasFileAccess ? (
+          <span style={{ color: '#86efac', fontSize: '0.85rem' }}>File access unlocked</span>
+        ) : (
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              type="password"
+              className="input-control"
+              aria-label="File access password"
+              autoComplete="current-password"
+              value={fileAccessPassword}
+              onChange={(event) => setFileAccessPassword(event.target.value)}
+              placeholder="File access password"
+              required
+            />
+            <button className="btn btn-primary" type="submit" disabled={isSigningIn}>
+              {isSigningIn ? 'Signing in...' : 'Unlock'}
+            </button>
+          </div>
+        )}
+      </form>
+
       {/* Directory path bar and summary */}
       <div
         className="card"
@@ -221,6 +287,7 @@ export default function FileExplorer({
                 >
                   Modified Date {sortBy === 'modified' && (sortOrder === 'asc' ? '▲' : '▼')}
                 </th>
+                <th>Open</th>
               </tr>
             </thead>
             <tbody>
@@ -229,9 +296,18 @@ export default function FileExplorer({
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <File size={16} color="#64748b" />
-                      <span style={{ fontWeight: 600, color: '#f8fafc' }}>
-                        {file.name}
-                      </span>
+                      {hasFileAccess ? (
+                        <a
+                          href={api.getFileContentUrl(file.path)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ fontWeight: 600, color: '#93c5fd' }}
+                        >
+                          {file.name}
+                        </a>
+                      ) : (
+                        <span style={{ fontWeight: 600, color: '#f8fafc' }}>{file.name}</span>
+                      )}
                     </div>
                   </td>
                   <td>
@@ -253,6 +329,20 @@ export default function FileExplorer({
                   </td>
                   <td style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
                     {new Date(file.modified).toLocaleString()}
+                  </td>
+                  <td>
+                    {hasFileAccess && (
+                      <a
+                        href={api.getFileContentUrl(file.path)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn btn-secondary btn-sm"
+                        aria-label={`Open ${file.name}`}
+                      >
+                        <Eye size={14} />
+                        Open
+                      </a>
+                    )}
                   </td>
                 </tr>
               ))}

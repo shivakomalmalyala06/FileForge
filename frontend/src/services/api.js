@@ -25,6 +25,13 @@ async function request(endpoint, options = {}) {
 
 export const api = {
   getHealth: () => request('/api/health'),
+  loginForFileAccess: (password) =>
+    request('/api/auth/file-access', {
+      method: 'POST',
+      body: JSON.stringify({ password }),
+    }),
+  getFileContentUrl: (path) =>
+    `${BASE_URL}/api/files/content?path=${encodeURIComponent(path)}`,
   getConfig: () => request('/api/config'),
   updateConfig: (allowed_root, current_scan_dir) =>
     request('/api/config', {
